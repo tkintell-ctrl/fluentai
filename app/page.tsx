@@ -219,7 +219,7 @@ export default function FluentAI() {
   // XP & Streak
   const addXp = async (amount: number) => {
     setXp(p => p + amount);
-    if (user) await supabase.rpc("add_xp", { p_user_id: user.id, p_amount: amount }).catch(() => {});
+    if (user) await supabase.rpc("add_xp", { p_user_id: user.id, p_amount: amount });
   };
 
   const markDone = async (id: string) => {
@@ -228,14 +228,14 @@ export default function FluentAI() {
     await addXp(25);
     const item = PATHS.flatMap(p => p.items).find(i => i.id === id);
     const path = PATHS.find(p => p.items.some(i => i.id === id));
-    if (user) await supabase.from("progress").upsert({ user_id: user.id, topic_id: id, topic_name: item?.name, path_id: path?.id }).catch(() => {});
+    if (user) await supabase.from("progress").upsert({ user_id: user.id, topic_id: id, topic_name: item?.name, path_id: path?.id });
   };
 
   const completeGym = async (exId: string, xpVal: number) => {
     if (gymDone.includes(exId)) return;
     setGymDone(p => [...p, exId]);
     await addXp(xpVal);
-    if (user) await supabase.from("mind_gym").upsert({ user_id: user.id, exercise_id: exId, journal_entry: gymJournal, xp_earned: xpVal }).catch(() => {});
+    if (user) await supabase.from("mind_gym").upsert({ user_id: user.id, exercise_id: exId, journal_entry: gymJournal, xp_earned: xpVal });
     setGymJournal("");
   };
 
