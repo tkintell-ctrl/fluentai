@@ -1,846 +1,130 @@
 "use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
-
-// Handle Supabase Google OAuth redirect — reads access_token from URL hash
-function useGoogleAuthRedirect(setUser: (u: any) => void) {
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash || !hash.includes("access_token")) return;
-    const params = new URLSearchParams(hash.replace("#", ""));
-    const accessToken = params.get("access_token");
-    if (!accessToken) return;
-
-    // Fetch user info from Supabase using the access token
-    fetch("https://pwkfsjhursmfftkppuwa.supabase.co/auth/v1/user", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3a2Zzamh1cnNtZmZ0a3BwdXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NjI0MDAsImV4cCI6MjA1OTQzODQwMH0.abc",
-      },
-    })
-      .then(r => r.json())
-      .then(data => {
-        const email = data.email || "user@gmail.com";
-        const name  = data.user_metadata?.full_name || data.user_metadata?.name || email.split("@")[0];
-        setUser({ name, email });
-        window.location.hash = "";
-      })
-      .catch(() => {
-        // Fallback: just log them in with email from token payload
-        try {
-          const payload = JSON.parse(atob(accessToken.split(".")[1]));
-          const email   = payload.email || "user@gmail.com";
-          setUser({ name: email.split("@")[0], email });
-          window.location.hash = "";
-        } catch {}
-      });
-  }, []);
-}
-
-// ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
-
-const C = {
-  navy:     "#0f172a",
-  navyMid:  "#1e293b",
-  blue:     "#3b82f6",
-  blueDark: "#2563eb",
-  blueLight:"#eff6ff",
-  bluePale: "#dbeafe",
-  text:     "#0f172a",
-  textMid:  "#475569",
-  textMute: "#94a3b8",
-  border:   "#e2e8f0",
-  bg:       "#f8fafc",
-  white:    "#ffffff",
-  green:    "#22c55e",
-  red:      "#ef4444",
-};
-
-// ── LOGO MARK ─────────────────────────────────────────────────────────────────
-
-function LogoMark({ size = 32 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 4 L16 13"       stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      <path d="M16 19 L16 28"      stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      <path d="M5.5 10 L13.2 14.5"   stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      <path d="M18.8 17.5 L26.5 22"  stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      <path d="M5.5 22 L13.2 17.5"   stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      <path d="M18.8 14.5 L26.5 10"  stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
-      <circle cx="16" cy="16"   r="3.5" fill="white"/>
-      <circle cx="16" cy="4"    r="2"   fill="white" opacity="0.9"/>
-      <circle cx="16" cy="28"   r="2"   fill="white" opacity="0.9"/>
-      <circle cx="5"  cy="9.5"  r="2"   fill="white" opacity="0.9"/>
-      <circle cx="27" cy="9.5"  r="2"   fill="white" opacity="0.9"/>
-      <circle cx="5"  cy="22.5" r="2"   fill="white" opacity="0.9"/>
-      <circle cx="27" cy="22.5" r="2"   fill="white" opacity="0.9"/>
-    </svg>
-  );
-}
-
-// ── DATA ───────────────────────────────────────────────────────────────────────
-
-const PATHS = [
-  { id:"tools",      icon:"🛠️", label:"AI Tools",   topics:[
-    {id:"chatgpt",    name:"ChatGPT",           sub:"OpenAI's chatbot"},
-    {id:"claude",     name:"Claude",            sub:"Anthropic assistant"},
-    {id:"gemini",     name:"Gemini",            sub:"Google's AI"},
-    {id:"midjourney", name:"Midjourney",        sub:"AI image creation"},
-    {id:"perplexity", name:"Perplexity",        sub:"AI-powered search"},
-    {id:"dalle",      name:"DALL-E",            sub:"Text-to-image"},
-    {id:"canva",      name:"Canva AI",          sub:"Design with AI"},
-    {id:"runway",     name:"Runway",            sub:"AI video creation"},
-    {id:"elevenlabs", name:"ElevenLabs",        sub:"AI voice cloning"},
-    {id:"suno",       name:"Suno AI",           sub:"AI music creation"},
-  ]},
-  { id:"agents",     icon:"🤖", label:"AI Agents",  topics:[
-    {id:"what-agent", name:"What is an Agent?", sub:"Basics explained"},
-    {id:"custom-gpt", name:"Custom GPTs",        sub:"Build your own bot"},
-    {id:"claude-proj",name:"Claude Projects",    sub:"Persistent memory"},
-    {id:"no-code",    name:"No-Code Agents",     sub:"No coding needed"},
-    {id:"multi-agent",name:"Multi-Agent Systems",sub:"Agents working together"},
-    {id:"tools-use",  name:"Giving Agents Tools",sub:"Web, email, files"},
-  ]},
-  { id:"automation", icon:"⚡", label:"Automation",  topics:[
-    {id:"zapier",      name:"Zapier + AI",        sub:"Connect your apps"},
-    {id:"make",        name:"Make.com",            sub:"Visual workflows"},
-    {id:"email-auto",  name:"Email Automation",    sub:"AI in your inbox"},
-    {id:"social-auto", name:"Social Media AI",     sub:"Auto-posting"},
-    {id:"biz-workflow",name:"Business Workflows",  sub:"End-to-end systems"},
-  ]},
-  { id:"skills",     icon:"🧠", label:"AI Skills",   topics:[
-    {id:"prompting",  name:"Prompt Engineering",  sub:"Get better results"},
-    {id:"ai-writing", name:"AI Writing",           sub:"Blogs, emails, copy"},
-    {id:"ai-research",name:"AI Research",          sub:"Find anything fast"},
-    {id:"ai-images",  name:"AI Images",            sub:"Create with words"},
-    {id:"ai-data",    name:"Data Analysis",        sub:"AI spreadsheets"},
-  ]},
-  { id:"agentic",    icon:"🚀", label:"Agentic AI",  topics:[
-    {id:"what-agentic",name:"What is Agentic AI?", sub:"Next frontier"},
-    {id:"bot-vs-agent",name:"Chatbots vs Agents",  sub:"Key differences"},
-    {id:"plan-agents", name:"Agents That Plan",     sub:"Goal to action"},
-    {id:"build-agent", name:"Build Your Agent",     sub:"Step-by-step guide"},
-  ]},
-];
+import { supabase } from "@/lib/supabase";
 
 const QUOTES = [
-  {t:"The best way to predict the future is to create it.",        by:"Peter Drucker"},
-  {t:"Intelligence is the ability to adapt to change.",            by:"Stephen Hawking"},
-  {t:"Learning never exhausts the mind.",                          by:"Leonardo da Vinci"},
-  {t:"AI is the new electricity.",                                 by:"Andrew Ng"},
-  {t:"Those who cannot learn and relearn will be left behind.",    by:"Alvin Toffler"},
+  {t:"The best way to predict the future is to create it.",by:"Peter Drucker"},
+  {t:"Intelligence is the ability to adapt to change.",by:"Stephen Hawking"},
+  {t:"AI is probably the most important thing humanity has ever worked on.",by:"Sundar Pichai"},
+  {t:"Learning never exhausts the mind.",by:"Leonardo da Vinci"},
+  {t:"Technology is best when it brings people together.",by:"Matt Mullenweg"},
+  {t:"Artificial intelligence would be the ultimate version of Google.",by:"Larry Page"},
+  {t:"The measure of intelligence is the ability to change.",by:"Albert Einstein"},
 ];
 
-const SYS_PROMPT = `You are a brilliant, warm AI tutor inside "fluentAI". You teach adults 35-65+ who have ZERO tech background. Be their most patient, enthusiastic friend who happens to know everything about AI.
+const FORUMS = [
+  {name:"r/ChatGPT",url:"https://reddit.com/r/ChatGPT",icon:"\u{1F534}",m:"5.2M"},
+  {name:"r/ClaudeAI",url:"https://reddit.com/r/ClaudeAI",icon:"\u{1F534}",m:"180K"},
+  {name:"r/artificial",url:"https://reddit.com/r/artificial",icon:"\u{1F534}",m:"1.1M"},
+  {name:"Hacker News",url:"https://news.ycombinator.com",icon:"\u{1F7E0}",m:"Tech"},
+  {name:"Product Hunt",url:"https://producthunt.com",icon:"\u{1F431}",m:"New Tools"},
+  {name:"The Neuron",url:"https://theneuron.ai",icon:"\u{1F9E0}",m:"675K+"},
+  {name:"Ben's Bites",url:"https://bensbites.com",icon:"\u{1F4F0}",m:"Newsletter"},
+  {name:"Futurepedia",url:"https://futurepedia.io",icon:"\u{1F680}",m:"Directory"},
+  {name:"Hugging Face",url:"https://huggingface.co",icon:"\u{1F917}",m:"Open Source"},
+  {name:"There's An AI For That",url:"https://theresanaiforthat.com",icon:"\u{1F527}",m:"Directory"},
+];
 
-CRITICAL FORMATTING — the app breaks if you ignore this:
-- NEVER use #, ##, **, __, or any markdown. Not one asterisk.
-- NEVER use bullet points starting with - or *
-- Write ONLY in plain conversational sentences.
-- Separate paragraphs with a blank line.
+const PATHS = [
+  {id:"tools",title:"AI Tools Mastery",icon:"\u{1F6E0}\u{FE0F}",color:"#3b82f6",items:[
+    {id:"chatgpt",name:"ChatGPT",sub:"OpenAI",c:"#3b82f6"},{id:"claude",name:"Claude",sub:"Anthropic",c:"#6366f1"},
+    {id:"gemini",name:"Gemini",sub:"Google",c:"#3b82f6"},{id:"midjourney",name:"Midjourney",sub:"Image AI",c:"#6366f1"},
+    {id:"perplexity",name:"Perplexity",sub:"AI Search",c:"#0ea5e9"},{id:"dalle",name:"DALL-E 3",sub:"Image AI",c:"#3b82f6"},
+    {id:"canva",name:"Canva AI",sub:"Design",c:"#6366f1"},{id:"runway",name:"Runway",sub:"Video AI",c:"#0ea5e9"},
+    {id:"gamma",name:"Gamma",sub:"Presentations",c:"#3b82f6"},{id:"notebooklm",name:"NotebookLM",sub:"Research",c:"#6366f1"},
+    {id:"elevenlabs",name:"ElevenLabs",sub:"Voice AI",c:"#0ea5e9"},{id:"suno",name:"Suno",sub:"Music AI",c:"#3b82f6"},
+  ]},
+  {id:"agents",title:"Creating AI Agents",icon:"\u{1F916}",color:"#6366f1",items:[
+    {id:"what-agents",name:"What Are AI Agents?",sub:"Basics",c:"#6366f1"},{id:"gpts-custom",name:"Custom GPTs",sub:"ChatGPT",c:"#3b82f6"},
+    {id:"claude-proj",name:"Claude Projects",sub:"Anthropic",c:"#6366f1"},{id:"gems",name:"Google Gems",sub:"Gemini",c:"#3b82f6"},
+    {id:"copilot-ag",name:"Copilot Agents",sub:"Microsoft",c:"#0ea5e9"},{id:"nocode-ag",name:"No-Code Builders",sub:"Relevance",c:"#6366f1"},
+    {id:"multi-ag",name:"Multi-Agent",sub:"CrewAI",c:"#3b82f6"},{id:"ag-tools",name:"Agent Tools",sub:"Web, APIs",c:"#0ea5e9"},
+  ]},
+  {id:"automation",title:"AI Automation",icon:"\u{26A1}",color:"#0ea5e9",items:[
+    {id:"auto-basics",name:"Automation Basics",sub:"Start here",c:"#0ea5e9"},{id:"zapier",name:"Zapier + AI",sub:"6000+ apps",c:"#3b82f6"},
+    {id:"make",name:"Make",sub:"Visual flows",c:"#6366f1"},{id:"n8n",name:"n8n",sub:"Open-source",c:"#0ea5e9"},
+    {id:"auto-email",name:"Email Auto",sub:"AI replies",c:"#3b82f6"},{id:"auto-social",name:"Social Auto",sub:"Schedule",c:"#6366f1"},
+    {id:"auto-data",name:"Data Auto",sub:"Sheets",c:"#0ea5e9"},{id:"auto-biz",name:"Business Auto",sub:"End-to-end",c:"#3b82f6"},
+  ]},
+  {id:"skills",title:"Building AI Skills",icon:"\u{1F9E0}",color:"#3b82f6",items:[
+    {id:"prompting",name:"Prompt Engineering",sub:"#1 skill",c:"#3b82f6"},{id:"chain",name:"Chain-of-Thought",sub:"Better answers",c:"#6366f1"},
+    {id:"ai-write",name:"AI Writing",sub:"Blogs, emails",c:"#0ea5e9"},{id:"ai-research",name:"AI Research",sub:"Find anything",c:"#3b82f6"},
+    {id:"ai-img",name:"AI Images",sub:"Prompt to art",c:"#6366f1"},{id:"ai-vid",name:"AI Video",sub:"Create clips",c:"#0ea5e9"},
+    {id:"ai-data",name:"AI Data",sub:"Insights",c:"#3b82f6"},{id:"ai-pres",name:"AI Presentations",sub:"Fast decks",c:"#6366f1"},
+  ]},
+  {id:"agentic",title:"Agentic AI",icon:"\u{1F680}",color:"#6366f1",items:[
+    {id:"ag-what",name:"What Is Agentic AI?",sub:"Next frontier",c:"#6366f1"},{id:"ag-vs",name:"Chatbots vs Agents",sub:"Differences",c:"#3b82f6"},
+    {id:"ag-plan",name:"Agents That Plan",sub:"Goal to action",c:"#0ea5e9"},{id:"ag-browse",name:"Agents That Browse",sub:"Web AI",c:"#3b82f6"},
+    {id:"ag-code",name:"Agents That Code",sub:"Claude Code",c:"#6366f1"},{id:"ag-work",name:"Agents at Work",sub:"Business",c:"#0ea5e9"},
+    {id:"ag-build",name:"Build Your Agent",sub:"Project",c:"#3b82f6"},{id:"ag-future",name:"The Future",sub:"What's next",c:"#6366f1"},
+  ]},
+];
 
-HOW TO TEACH:
-- Open with a vivid real-world story or scene that puts the learner right in the moment.
-- Use one surprising, funny, or deeply relatable analogy.
-- Teach ONE idea only. Never overwhelm.
-- Give them ONE specific thing to try right now — doable in 60 seconds.
-- Share one wow-fact they will tell someone about today.
-- End EVERY message with a quiz in this EXACT format with nothing after QUIZ_END:
+const SYS = "You are a friendly AI tutor inside fluentAI. You teach people how to use AI tools step by step.\n\nRULES FOR HOW YOU WRITE:\n1. Write in plain conversational sentences. Never use markdown like # headers, ** bold **, bullet points, or numbered lists with periods.\n2. When you need to show steps, write them naturally like First do this. Then do that. Finally try this.\n3. Use short paragraphs of 2-3 sentences max. Leave a blank line between paragraphs.\n4. Start every response with a relevant quote from a famous person. Format it like: Quote here. - Author Name\n5. Use everyday analogies. Compare AI tools to restaurant menus, TV remotes, or recipe books.\n6. Include a section that says TRY THIS NOW followed by one specific action.\n7. Include a section that says PICTURE THIS followed by a visual description of the screen.\n8. Include a section that says DID YOU KNOW followed by one interesting fact.\n9. Be warm, patient, encouraging. Never condescending.\n10. Always mention FREE options before paid ones.\n11. Search the web if unsure about current features.\n\nCRITICAL - EVERY RESPONSE MUST END WITH A QUIZ IN EXACTLY THIS FORMAT:\n\nQUIZ\n[Write a clear question here]\nOPTION_A [First answer]\nOPTION_B [Second answer]\nOPTION_C [Third answer]\nOPTION_D [Fourth answer]\nCORRECT [Just the letter A, B, C, or D]\n\nDo NOT reveal the correct answer in your text. The app handles that.\nDo NOT put any text after the QUIZ section.";
 
-QUIZ_START
-[Question — make it feel like a fun game show, not a test]
-OPT_A:[Option A]
-OPT_B:[Option B]
-OPT_C:[Option C]
-OPT_D:[Option D]
-CORRECT:[A or B or C or D]
-QUIZ_END
-
-When they answer: celebrate loudly if correct. Be warm and safe if wrong. Then ask what they want to do next.`;
-
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-
-const callClaude = async (messages: {role:string; content:string}[]) => {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, system:SYS_PROMPT, messages }),
-  });
-  const d = await res.json();
-  return d.content?.[0]?.text || "Something went wrong. Please try again!";
-};
-
-const parseQuiz = (text: string) => {
-  const match = text.match(/QUIZ_START([\s\S]*?)QUIZ_END/);
-  if (!match) return { clean: text, quiz: null };
-  const block = match[1];
-  const lines   = block.split("\n").map((l:string) => l.trim()).filter(Boolean);
-  const question = lines[0] || "";
-  const a = block.match(/OPT_A:(.+)/)?.[1]?.trim();
-  const b = block.match(/OPT_B:(.+)/)?.[1]?.trim();
-  const c = block.match(/OPT_C:(.+)/)?.[1]?.trim();
-  const d = block.match(/OPT_D:(.+)/)?.[1]?.trim();
-  const correct = block.match(/CORRECT:\s*([ABCD])/)?.[1];
-  const clean = text.replace(/QUIZ_START[\s\S]*?QUIZ_END/, "").trim();
-  if (!question||!a||!b||!c||!d||!correct) return { clean: text, quiz: null };
-  return { clean, quiz: { question, options: {A:a,B:b,C:c,D:d}, correct } };
-};
-
-const cleanMd = (t: string) =>
-  t.replace(/#{1,6}\s?/g,"").replace(/\*\*/g,"").replace(/\*/g,"").replace(/__/g,"").trim();
-
-// ── QUIZ WIDGET ───────────────────────────────────────────────────────────────
-
-function QuizWidget({ quiz, onAnswer }: { quiz:any; onAnswer:(l:string,r:boolean)=>void }) {
-  const [selected, setSelected] = useState<string|null>(null);
-  const [revealed, setRevealed] = useState(false);
-
-  const pick = (letter: string) => {
-    if (revealed) return;
-    setSelected(letter);
-    setRevealed(true);
-    setTimeout(() => onAnswer(letter, letter === quiz.correct), 800);
-  };
-
-  const getColors = (letter: string) => {
-    if (!revealed) return { bg:C.white, border:C.border, text:C.text, dotBg:C.blueLight, dotText:C.blue };
-    if (letter===quiz.correct)  return { bg:"#f0fdf4", border:C.green, text:"#166534", dotBg:C.green, dotText:C.white };
-    if (letter===selected)      return { bg:"#fef2f2", border:C.red,   text:"#991b1b", dotBg:C.red,   dotText:C.white };
-    return { bg:C.bg, border:C.border, text:C.textMute, dotBg:"#f1f5f9", dotText:C.textMute };
-  };
-
-  return (
-    <div style={{ marginTop:16, background:C.blueLight, borderRadius:18, padding:"20px", border:`1.5px solid ${C.bluePale}` }}>
-      <p style={{ fontSize:11, fontWeight:800, color:C.blue, letterSpacing:"1px", margin:"0 0 10px", textTransform:"uppercase" }}>
-        Quick Quiz
-      </p>
-      <p style={{ fontSize:15, fontWeight:600, color:C.text, lineHeight:1.6, margin:"0 0 16px" }}>{quiz.question}</p>
-      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-        {Object.entries(quiz.options).map(([letter, text]: [string, any]) => {
-          const s = getColors(letter);
-          return (
-            <button key={letter} onClick={()=>pick(letter)} disabled={revealed}
-              style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 16px", borderRadius:12,
-                border:`1.5px solid ${s.border}`, background:s.bg,
-                cursor:revealed?"default":"pointer", textAlign:"left", transition:"all .2s", width:"100%" }}>
-              <span style={{ width:28, height:28, borderRadius:"50%", background:s.dotBg,
-                display:"flex", alignItems:"center", justifyContent:"center",
-                fontWeight:800, fontSize:12, color:s.dotText, flexShrink:0 }}>
-                {!revealed ? letter : letter===quiz.correct ? "✓" : letter===selected ? "✗" : letter}
-              </span>
-              <span style={{ fontSize:14, color:s.text, lineHeight:1.5 }}>{text}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── CHAT MESSAGE ──────────────────────────────────────────────────────────────
-
-function ChatMessage({ msg, onAnswer }: { msg:any; onAnswer:(id:number,l:string,r:boolean,q:any)=>void }) {
-  const { clean, quiz } = parseQuiz(msg.content);
-  const text = cleanMd(clean);
-  const paragraphs = text.split(/\n\n+/).filter((p:string) => p.trim());
-
-  if (msg.role==="user") return (
-    <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:20 }}>
-      <div style={{ maxWidth:"76%", padding:"13px 17px", borderRadius:"20px 20px 5px 20px",
-        background:C.navy, color:C.white, fontSize:15, lineHeight:1.7 }}>
-        {msg.content}
-      </div>
-    </div>
-  );
-
-  return (
-    <div style={{ display:"flex", gap:12, marginBottom:24, alignItems:"flex-start" }}>
-      <div style={{ width:34, height:34, borderRadius:10,
-        background:`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-        display:"flex", alignItems:"center", justifyContent:"center",
-        flexShrink:0, marginTop:2 }}><LogoMark size={20}/></div>
-      <div style={{ flex:1 }}>
-        <div style={{ background:C.white, borderRadius:"5px 20px 20px 20px", padding:"16px 18px",
-          boxShadow:"0 1px 8px rgba(0,0,0,0.06)" }}>
-          {paragraphs.map((p:string, i:number) => (
-            <p key={i} style={{ fontSize:15, color:C.text, lineHeight:1.85, margin:i===0?"0":"12px 0 0" }}>
-              {p.replace(/\n/g," ")}
-            </p>
-          ))}
-        </div>
-        {quiz && !msg.answered && <QuizWidget quiz={quiz} onAnswer={(l,r)=>onAnswer(msg.id,l,r,quiz)}/>}
-        {quiz && msg.answered && (
-          <div style={{ marginTop:10, padding:"11px 16px", borderRadius:12,
-            background:msg.answeredRight?"#f0fdf4":"#fef2f2",
-            border:`1.5px solid ${msg.answeredRight?"#86efac":"#fca5a5"}` }}>
-            <p style={{ fontSize:14, color:msg.answeredRight?"#166534":"#991b1b", margin:0, fontWeight:600 }}>
-              {msg.answeredRight ? "✓ Correct! Well done 🎉" : `The answer was ${quiz.correct} — you've got the next one!`}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── AUTH SCREEN ───────────────────────────────────────────────────────────────
-
-function AuthScreen({ onAuth }: { onAuth:(u:{name:string;email:string})=>void }) {
-  const [mode, setMode]   = useState("login");
-  const [email, setEmail] = useState("");
-  const [pass, setPass]   = useState("");
-  const [name, setName]   = useState("");
-  const [err, setErr]     = useState("");
+export default function FluentAI() {
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"login"|"signup">("login");
+  const [form, setForm] = useState({name:"",email:"",pass:""});
+  const [authErr, setAuthErr] = useState("");
+  const [showOnboard, setShowOnboard] = useState(false);
+  const [obStep, setObStep] = useState(0);
+  const [tab, setTab] = useState("learn");
+  const [topic, setTopic] = useState<{name:string;sub:string}|null>(null);
+  const [msgs, setMsgs] = useState<{role:string;content:string;quiz?:any}[]>([]);
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [done, setDone] = useState<string[]>([]);
+  const [streak, setStreak] = useState({c:0,d:"",b:0});
+  const [xp, setXp] = useState(0);
+  const [plan, setPlan] = useState("free");
+  const [forumBuzz, setForumBuzz] = useState<{content:string;ts:string}|null>(null);
+  const [forumLoading, setForumLoading] = useState(false);
+  const [quizAnswered, setQuizAnswered] = useState<{[key:number]:string}>({});
+  const [dailyQ] = useState(QUOTES[Math.floor(Math.random()*QUOTES.length)]);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const hRef = useRef<{role:string;content:string}[]>([]);
+  const C = {navy:"#0f172a",blue:"#3b82f6",lightBg:"#f8fafc",border:"#e2e8f0",textDark:"#0f172a",textMid:"#475569",textLight:"#94a3b8",green:"#22c55e",red:"#ef4444",blueLight:"#dbeafe",bluePale:"#eff6ff"};
 
-  const handle = async () => {
-    setErr("");
-    if (!email.trim())   { setErr("Please enter your email."); return; }
-    if (pass.length < 6) { setErr("Password must be at least 6 characters."); return; }
-    if (mode==="signup" && !name.trim()) { setErr("Please enter your name."); return; }
-    setLoading(true);
-    await new Promise(r => setTimeout(r, 700));
-    setLoading(false);
-    onAuth({ name: name || email.split("@")[0], email });
-  };
+  useEffect(()=>{supabase.auth.getSession().then(({data:{session}})=>{setUser(session?.user||null);if(session?.user)loadUserData(session.user.id);if(!localStorage.getItem("fl_ob")&&session?.user)setShowOnboard(true);setAuthLoading(false);});const{data:{subscription}}=supabase.auth.onAuthStateChange((_e,session)=>{setUser(session?.user||null);if(session?.user)loadUserData(session.user.id);});return()=>subscription.unsubscribe();},[]);
+  const loadUserData=async(uid:string)=>{const{data:p}=await supabase.from("profiles").select("*").eq("id",uid).single();if(p){setXp(p.xp||0);setStreak({c:p.streak_count||0,d:p.streak_date||"",b:p.streak_best||0});setPlan(p.plan||"free");}const{data:pr}=await supabase.from("progress").select("topic_id").eq("user_id",uid);if(pr)setDone(pr.map((r:any)=>r.topic_id));};
+  useEffect(()=>{if(chatRef.current)chatRef.current.scrollTop=chatRef.current.scrollHeight;},[msgs,loading]);
+  const doAuth=async(type:string)=>{setAuthErr("");if(type==="google"){await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin}});return;}try{if(authMode==="signup"){if(!form.name){setAuthErr("Please enter your name");return;}const{error}=await supabase.auth.signUp({email:form.email,password:form.pass,options:{data:{name:form.name}}});if(error)throw error;}else{const{error}=await supabase.auth.signInWithPassword({email:form.email,password:form.pass});if(error)throw error;}}catch(e:any){setAuthErr(e.message);}};
+  const doSignOut=async()=>{await supabase.auth.signOut();setUser(null);setDone([]);setMsgs([]);};
+  const addXp=async(amt:number)=>{setXp(p=>p+amt);if(user)try{await supabase.rpc("add_xp",{p_user_id:user.id,p_amount:amt})}catch{}};
+  const markDone=async(id:string)=>{if(done.includes(id))return;setDone(p=>[...p,id]);await addXp(25);const item=PATHS.flatMap(p=>p.items).find(i=>i.id===id);const path=PATHS.find(p=>p.items.some(i=>i.id===id));if(user)try{await supabase.from("progress").upsert({user_id:user.id,topic_id:id,topic_name:item?.name,path_id:path?.id})}catch{}};
+  const parseQuiz=(text:string)=>{const m=text.match(/QUIZ\s*\n([\s\S]*?)$/i);if(!m)return{text,quiz:null};const clean=text.replace(/QUIZ\s*\n[\s\S]*$/i,"").trim();const b=m[1];const q=b.split("\n").find(l=>l.trim()&&!l.trim().startsWith("OPTION_")&&!l.trim().startsWith("CORRECT"))?.trim()||"";const oA=b.match(/OPTION_A\s+(.*)/i)?.[1]?.trim()||"";const oB=b.match(/OPTION_B\s+(.*)/i)?.[1]?.trim()||"";const oC=b.match(/OPTION_C\s+(.*)/i)?.[1]?.trim()||"";const oD=b.match(/OPTION_D\s+(.*)/i)?.[1]?.trim()||"";const cr=b.match(/CORRECT\s+([A-D])/i)?.[1]?.toUpperCase()||"";if(!q||!oA||!cr)return{text,quiz:null};return{text:clean,quiz:{question:q,options:{A:oA,B:oB,C:oC,D:oD},correct:cr}};};
+  const callAI=async(msg:string,hist:any[]=[])=>{try{const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,history:hist})});const data=await res.json();return data.content||"Could you rephrase that?";}catch{return"Connection issue. Please try again.";}};
+  const openTopic=async(name:string,sub:string)=>{setTopic({name,sub});setMsgs([]);hRef.current=[];setTab("lesson");setLoading(true);setQuizAnswered({});window.scrollTo(0,0);const msg="Teach me about "+name+" ("+sub+"). I have never used this before. Search the web for the latest information. Start from the very beginning.";const res=await callAI(msg);const{text,quiz}=parseQuiz(res);hRef.current=[{role:"user",content:msg},{role:"assistant",content:res}];setMsgs([{role:"assistant",content:text,quiz}]);setLoading(false);};
+  const sendChat=async(text?:string)=>{const msg=text||input.trim();if(!msg||loading)return;setInput("");if(tab!=="lesson"&&tab!=="tutor"){setTab("tutor");setMsgs([]);hRef.current=[];setTopic(null);}window.scrollTo(0,0);setMsgs(p=>[...p,{role:"user",content:msg}]);setLoading(true);const res=await callAI(msg,hRef.current);const{text:clean,quiz}=parseQuiz(res);hRef.current=[...hRef.current,{role:"user",content:msg},{role:"assistant",content:res}];setMsgs(p=>[...p,{role:"assistant",content:clean,quiz}]);setLoading(false);};
+  const handleQuizAnswer=(msgIdx:number,letter:string,correct:string)=>{if(quizAnswered[msgIdx])return;setQuizAnswered(p=>({...p,[msgIdx]:letter}));if(letter===correct)addXp(10);const isRight=letter===correct;setTimeout(()=>{sendChat(isRight?"I answered "+letter+" and got it right! Please congratulate me and teach me the next part.":"I answered "+letter+" but the correct answer was "+correct+". Please explain why "+correct+" is correct in a friendly way, then continue teaching.");},1200);};
+  const fetchForumBuzz=async()=>{setForumLoading(true);const res=await callAI("Search the web for what is trending right now across AI communities including Reddit, Hacker News, Product Hunt, and Twitter. Give me the top 5 trending topics with a one sentence summary each, the single hottest new tool, and one practical tip. Write in plain sentences, no markdown.",[]);setForumBuzz({content:res,ts:new Date().toLocaleString()});setForumLoading(false);};
+  const allItems=PATHS.flatMap(p=>p.items.map(i=>({...i,path:p.title})));const filtered=search?allItems.filter(i=>i.name.toLowerCase().includes(search.toLowerCase())||i.sub.toLowerCase().includes(search.toLowerCase())):[];
+  const ONBOARD=[{icon:"\u{1F393}",title:"Welcome to fluentAI",desc:"The app that teaches you how to use every AI tool, step by step, in plain English. No tech skills needed."},{icon:"\u{1F4DA}",title:"How It Works",desc:"Choose from 5 learning paths. Tap any topic to start an interactive lesson. Every lesson ends with a quiz."},{icon:"\u{1F4AC}",title:"Your AI Tutor",desc:"Ask anything, anytime. The tutor explains things like a patient friend and searches the web for latest info."},{icon:"\u{1F525}",title:"Streaks and Progress",desc:"Learn daily to build your streak. Earn XP for lessons and quizzes. Track progress across all paths."}];
+  const userName=user?.user_metadata?.name||user?.user_metadata?.full_name||user?.email?.split("@")[0]||"User";const userAvatar=userName[0]?.toUpperCase()||"U";
 
-  const inputBase: React.CSSProperties = {
-    width:"100%", padding:"14px 16px", borderRadius:12, border:`1.5px solid ${C.border}`,
-    fontSize:16, color:C.text, background:C.bg, outline:"none",
-    boxSizing:"border-box", fontFamily:"inherit", transition:"border-color .2s",
-  };
+  if(authLoading)return(<div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.navy}}><div style={{textAlign:"center"}}><div style={{width:48,height:48,borderRadius:14,background:C.blue,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:22,margin:"0 auto 16px"}}>f</div><p style={{color:C.textLight,fontSize:14}}>Loading...</p></div></div>);
 
-  const Field = ({ label, value, setter, type="text", placeholder="" }:
-    { label:string; value:string; setter:(v:string)=>void; type?:string; placeholder?:string }) => (
-    <div style={{ marginBottom:18 }}>
-      <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.textMid,
-        letterSpacing:"0.8px", textTransform:"uppercase" as const, marginBottom:8 }}>{label}</label>
-      <input value={value} onChange={e=>setter(e.target.value)} type={type} placeholder={placeholder}
-        onKeyDown={e=>e.key==="Enter"&&handle()} style={inputBase}
-        onFocus={e=>(e.target.style.borderColor=C.blue)}
-        onBlur={e=>(e.target.style.borderColor=C.border)}/>
-    </div>
-  );
+  if(!user)return(<div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",background:"linear-gradient(160deg,"+C.navy+" 0%,#1e293b 50%,"+C.navy+" 100%)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div style={{background:"#fff",borderRadius:20,boxShadow:"0 25px 60px rgba(0,0,0,.3)",width:"100%",maxWidth:420,overflow:"hidden"}}><div style={{background:"linear-gradient(135deg,"+C.navy+",#1e293b)",padding:"32px 28px 26px",textAlign:"center",color:"#fff"}}><div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:10}}><div style={{width:44,height:44,borderRadius:12,background:C.blue,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22}}>f</div><span style={{fontWeight:800,fontSize:26,letterSpacing:"-.03em"}}>fluentAI</span></div><p style={{fontSize:16,fontWeight:600,margin:"0 0 6px",opacity:.95}}>Master every AI tool — step by step</p><p style={{fontSize:13,margin:0,opacity:.7,lineHeight:1.5}}>No tech skills needed. Interactive lessons with quizzes. Free to start.</p></div><div style={{display:"flex",gap:6,padding:"16px 24px 0",flexWrap:"wrap",justifyContent:"center"}}>{["\u{1F6E0}\u{FE0F} 12+ Tools","\u{1F916} Agents","\u{26A1} Automation","\u{1F4DD} Quizzes","\u{1F525} Streaks"].map(f=>(<span key={f} style={{padding:"4px 10px",borderRadius:20,background:C.blueLight,fontSize:11,fontWeight:600,color:C.navy}}>{f}</span>))}</div><div style={{margin:"14px 24px",background:C.bluePale,border:"1px solid "+C.blueLight,borderRadius:10,padding:"10px 14px"}}><p style={{fontSize:12.5,fontStyle:"italic",color:C.textMid,margin:"0 0 3px",lineHeight:1.5}}>&#8220;{dailyQ.t}&#8221;</p><p style={{fontSize:11,color:C.blue,margin:0,fontWeight:600}}>&#8212; {dailyQ.by}</p></div><div style={{padding:"6px 28px 28px"}}>{authMode==="signup"&&(<div style={{marginBottom:14}}><label style={{display:"block",fontSize:13,fontWeight:700,color:C.navy,marginBottom:5}}>Full Name</label><input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Enter your name" style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid "+C.border,fontSize:14,fontFamily:"inherit",color:C.navy,background:"#fff",boxSizing:"border-box"}}/></div>)}<div style={{marginBottom:14}}><label style={{display:"block",fontSize:13,fontWeight:700,color:C.navy,marginBottom:5}}>Email Address</label><input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="you@example.com" style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid "+C.border,fontSize:14,fontFamily:"inherit",color:C.navy,background:"#fff",boxSizing:"border-box"}}/></div><div style={{marginBottom:8}}><label style={{display:"block",fontSize:13,fontWeight:700,color:C.navy,marginBottom:5}}>Password</label><input type="password" value={form.pass} onChange={e=>setForm(p=>({...p,pass:e.target.value}))} placeholder="At least 6 characters" style={{width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid "+C.border,fontSize:14,fontFamily:"inherit",color:C.navy,background:"#fff",boxSizing:"border-box"}}/></div>{authErr&&<p style={{color:C.red,fontSize:12,margin:"6px 0 0"}}>{authErr}</p>}<button onClick={()=>doAuth("email")} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,"+C.blue+","+C.navy+")",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:14}}>{authMode==="login"?"Log In":"Create Free Account"}</button><div style={{display:"flex",alignItems:"center",gap:12,margin:"18px 0"}}><div style={{flex:1,height:1,background:C.border}}/><span style={{fontSize:12,color:C.textLight,fontWeight:500}}>or continue with</span><div style={{flex:1,height:1,background:C.border}}/></div><button onClick={()=>doAuth("google")} style={{width:"100%",padding:"12px",borderRadius:12,border:"1.5px solid "+C.border,background:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,color:C.navy}}><svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google</button><p style={{fontSize:13,color:C.textMid,marginTop:16,textAlign:"center"}}>{authMode==="login"?"Don't have an account? ":"Already have an account? "}<span style={{color:C.blue,fontWeight:700,cursor:"pointer"}} onClick={()=>setAuthMode(authMode==="login"?"signup":"login")}>{authMode==="login"?"Sign up free":"Log in"}</span></p></div></div></div>);
 
-  return (
-    <div style={{ minHeight:"100vh", background:C.navy,
-      display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-      padding:"32px 24px", fontFamily:"'Segoe UI',system-ui,sans-serif" }}>
+  if(showOnboard){const s=ONBOARD[obStep];return(<div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",background:"linear-gradient(160deg,"+C.navy+",#1e293b)",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}><div key={obStep} style={{background:"#fff",borderRadius:20,boxShadow:"0 25px 60px rgba(0,0,0,.3)",width:"100%",maxWidth:440,padding:"36px 28px",textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>{s.icon}</div><h2 style={{fontSize:20,fontWeight:800,color:C.navy,margin:"0 0 10px"}}>{s.title}</h2><p style={{fontSize:15,color:C.textMid,lineHeight:1.7,margin:"0 0 24px"}}>{s.desc}</p><div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:20}}>{ONBOARD.map((_,i)=><div key={i} style={{width:i===obStep?22:8,height:8,borderRadius:4,background:i===obStep?C.blue:C.border,transition:"all .3s"}}/>)}</div><div style={{display:"flex",gap:10}}>{obStep>0&&<button onClick={()=>setObStep(p=>p-1)} style={{flex:1,padding:"12px",borderRadius:12,border:"1.5px solid "+C.border,background:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",color:C.textMid}}>Back</button>}<button onClick={()=>{if(obStep<ONBOARD.length-1)setObStep(p=>p+1);else{setShowOnboard(false);localStorage.setItem("fl_ob","1");}}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,"+C.blue+","+C.navy+")",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>{obStep<ONBOARD.length-1?"Next":"Start Learning"}</button></div></div></div>);}
 
-      <div style={{ textAlign:"center", marginBottom:36 }}>
-        <div style={{ width:64, height:64, borderRadius:20,
-          background:`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-          display:"flex", alignItems:"center", justifyContent:"center",
-          margin:"0 auto 16px", boxShadow:"0 8px 32px rgba(59,130,246,0.45)" }}>
-          <LogoMark size={38}/>
-        </div>
-        <h1 style={{ color:C.white, fontWeight:800, fontSize:28, margin:0, letterSpacing:"-0.5px" }}>
-          fluent<span style={{ color:C.blue }}>AI</span>
-        </h1>
-        <p style={{ color:"#64748b", fontSize:14, margin:"6px 0 0" }}>Learn AI. Actually use it.</p>
-      </div>
+  const QuizCard=({quiz,msgIdx}:{quiz:any;msgIdx:number})=>{const answered=quizAnswered[msgIdx];return(<div style={{background:C.bluePale,border:"2px solid "+C.blue,borderRadius:16,padding:20,margin:"16px 0"}}><p style={{fontSize:14,fontWeight:700,color:C.navy,margin:"0 0 14px",lineHeight:1.5}}>{quiz.question}</p>{["A","B","C","D"].map(letter=>{const isSelected=answered===letter;const isCorrect=letter===quiz.correct;let bg="#fff",borderCol=C.border,textCol=C.navy;if(answered){if(isSelected&&isCorrect){bg="#dcfce7";borderCol=C.green;textCol="#166534";}else if(isSelected&&!isCorrect){bg="#fee2e2";borderCol=C.red;textCol="#991b1b";}else if(isCorrect){bg="#dcfce7";borderCol=C.green;textCol="#166534";}}return(<button key={letter} onClick={()=>handleQuizAnswer(msgIdx,letter,quiz.correct)} disabled={!!answered} style={{display:"flex",gap:10,alignItems:"center",padding:"12px 14px",margin:"6px 0",borderRadius:12,border:"2px solid "+borderCol,cursor:answered?"default":"pointer",fontSize:14,width:"100%",textAlign:"left",background:bg,fontFamily:"inherit",color:textCol,transition:"all .2s"}}><span style={{width:30,height:30,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,flexShrink:0,background:answered?(isSelected||isCorrect?(isCorrect?C.green:C.red):C.border):C.blueLight,color:answered?(isSelected||isCorrect?"#fff":C.textMid):C.blue}}>{letter}</span><span style={{fontWeight:500}}>{quiz.options[letter]}</span>{answered&&isCorrect&&<span style={{marginLeft:"auto",fontSize:16}}>{"\u2713"}</span>}{answered&&isSelected&&!isCorrect&&<span style={{marginLeft:"auto",fontSize:16}}>{"\u2717"}</span>}</button>)})}{answered&&<p style={{fontSize:13,fontWeight:600,color:answered===quiz.correct?"#166534":"#991b1b",margin:"10px 0 0",textAlign:"center"}}>{answered===quiz.correct?"Correct! Well done! \u{1F389}":"Not quite \u2014 the correct answer is highlighted above."}</p>}</div>);};
 
-      <div style={{ width:"100%", maxWidth:360, background:C.white, borderRadius:24,
-        padding:"32px 28px", boxShadow:"0 24px 60px rgba(0,0,0,0.4)" }}>
+  return(<div style={{fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif",background:C.lightBg,color:C.navy,minHeight:"100vh",paddingBottom:76}}><header style={{background:"#fff",borderBottom:"1px solid "+C.border,padding:"0 20px",position:"sticky",top:0,zIndex:100}}><div style={{maxWidth:680,margin:"0 auto",height:54,display:"flex",alignItems:"center",justifyContent:"space-between"}}><div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>{setTab("learn");setTopic(null);window.scrollTo(0,0);}}><div style={{width:28,height:28,borderRadius:8,background:C.blue,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:14}}>f</div><span style={{fontWeight:700,fontSize:16,color:C.navy}}>fluent<span style={{color:C.blue}}>AI</span></span></div><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{padding:"4px 10px",borderRadius:14,background:streak.c>0?C.blueLight:"#f1f5f9",fontSize:13,fontWeight:700,color:streak.c>0?C.navy:C.textLight}}>{"\u{1F525}"} {streak.c}</div><div style={{padding:"4px 10px",borderRadius:14,background:C.blueLight,fontSize:13,fontWeight:700,color:C.blue}}>{"\u26A1"} {xp}</div><div style={{width:28,height:28,borderRadius:"50%",background:C.navy,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>{setTab("profile");window.scrollTo(0,0);}}>{userAvatar}</div></div></div></header>
+  <main style={{maxWidth:680,margin:"0 auto",padding:"0 20px"}}>
 
-        <div style={{ display:"flex", background:C.bg, borderRadius:12, padding:4, marginBottom:28, gap:4 }}>
-          {["login","signup"].map(m=>(
-            <button key={m} onClick={()=>{setMode(m);setErr("");}}
-              style={{ flex:1, padding:"9px", borderRadius:9, border:"none", cursor:"pointer",
-                fontWeight:700, fontSize:14, transition:"all .2s",
-                background:mode===m?C.white:"transparent",
-                color:mode===m?C.navy:C.textMute,
-                boxShadow:mode===m?"0 1px 6px rgba(0,0,0,0.1)":"none" }}>
-              {m==="login"?"Log In":"Sign Up"}
-            </button>
-          ))}
-        </div>
+  {tab==="learn"&&(<div style={{paddingTop:20,paddingBottom:20}}><div style={{background:C.bluePale,border:"1px solid "+C.blueLight,borderRadius:12,padding:"14px 18px",marginBottom:20,textAlign:"center"}}><p style={{fontSize:13,fontStyle:"italic",color:C.textMid,margin:"0 0 4px",lineHeight:1.5}}>&#8220;{dailyQ.t}&#8221;</p><p style={{fontSize:11,color:C.blue,margin:0,fontWeight:600}}>&#8212; {dailyQ.by}</p></div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:24}}>{[{v:done.length,l:"Learned",i:"\u{1F4DA}"},{v:streak.c,l:"Streak",i:"\u{1F525}"},{v:streak.b,l:"Best",i:"\u{1F3C6}"},{v:xp,l:"XP",i:"\u26A1"}].map((s,i)=>(<div key={i} style={{background:"#fff",borderRadius:12,border:"1px solid "+C.border,padding:"12px 8px",textAlign:"center"}}><div style={{fontSize:16}}>{s.i}</div><div style={{fontSize:20,fontWeight:800,color:C.navy,margin:"2px 0"}}>{s.v}</div><div style={{fontSize:10,color:C.textLight,fontWeight:600,textTransform:"uppercase",letterSpacing:".5px"}}>{s.l}</div></div>))}</div><div style={{position:"relative",marginBottom:20}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search any AI tool, skill, or topic..." style={{width:"100%",padding:"13px 16px 13px 40px",borderRadius:12,border:"1.5px solid "+C.border,background:"#fff",fontSize:14,fontFamily:"inherit",color:C.navy,boxSizing:"border-box"}}/><span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,opacity:.4}}>{"\u{1F50D}"}</span>{search&&filtered.length>0&&(<div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid "+C.border,borderRadius:12,marginTop:4,maxHeight:200,overflowY:"auto",zIndex:50,boxShadow:"0 8px 24px rgba(0,0,0,.1)"}}>{filtered.slice(0,6).map((it,i)=>(<div key={i} style={{padding:"10px 16px",cursor:"pointer",borderBottom:"1px solid "+C.border,fontSize:13,color:C.navy}} onClick={()=>{setSearch("");openTopic(it.name,it.sub);}}><span style={{fontWeight:600}}>{it.name}</span> <span style={{color:C.textLight}}>{"\u00B7"} {it.path}</span></div>))}</div>)}</div>{PATHS.map(path=>(<div key={path.id} style={{marginBottom:28}}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><span style={{fontSize:18}}>{path.icon}</span><h2 style={{fontSize:16,fontWeight:700,color:C.navy,margin:0}}>{path.title}</h2><div style={{marginLeft:"auto",width:48,height:5,borderRadius:3,background:C.border,overflow:"hidden"}}><div style={{height:"100%",width:(path.items.filter(i=>done.includes(i.id)).length/path.items.length)*100+"%",background:path.color,borderRadius:3}}/></div><span style={{fontSize:12,color:C.textLight,fontWeight:600}}>{path.items.filter(i=>done.includes(i.id)).length}/{path.items.length}</span></div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8}}>{path.items.map(item=>{const isDone=done.includes(item.id);return(<div key={item.id} style={{background:"#fff",border:isDone?"2px solid "+item.c:"1.5px solid "+C.border,borderRadius:12,padding:"14px",cursor:"pointer",position:"relative",transition:"all .15s"}} onClick={()=>openTopic(item.name,item.sub)}>{isDone&&<div style={{position:"absolute",top:8,right:8,width:18,height:18,borderRadius:"50%",background:C.green,color:"#fff",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2713"}</div>}<div style={{width:6,height:6,borderRadius:"50%",background:item.c,marginBottom:8}}/><div style={{fontSize:13,fontWeight:600,color:C.navy,lineHeight:1.3}}>{item.name}</div><div style={{fontSize:11,color:C.textLight,marginTop:3}}>{item.sub}</div></div>);})}</div></div>))}</div>)}
 
-        {mode==="signup" && <Field label="Your Name" value={name} setter={setName} placeholder="e.g. Samuel"/>}
-        <Field label="Email Address" value={email} setter={setEmail} type="email" placeholder="you@example.com"/>
-        <Field label="Password"      value={pass}  setter={setPass}  type="password" placeholder="Min. 6 characters"/>
+  {(tab==="lesson"||tab==="tutor")&&(<div style={{paddingTop:16,paddingBottom:20}}>{topic&&tab==="lesson"&&(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,paddingBottom:12,borderBottom:"1px solid "+C.border}}><div><button onClick={()=>{setTab("learn");setTopic(null);window.scrollTo(0,0);}} style={{background:"none",border:"none",fontSize:13,color:C.blue,cursor:"pointer",fontFamily:"inherit",padding:0,fontWeight:600}}>{"\u2190"} Back to lessons</button><div style={{fontSize:18,fontWeight:700,color:C.navy,marginTop:4}}>{topic.name}</div><div style={{fontSize:13,color:C.textLight}}>{topic.sub}</div></div><button onClick={()=>{const id=PATHS.flatMap(p=>p.items).find(i=>i.name===topic.name)?.id;if(id)markDone(id);}} style={{padding:"8px 16px",borderRadius:10,border:"none",background:done.includes(PATHS.flatMap(p=>p.items).find(i=>i.name===topic?.name)?.id||"")?C.border:C.blue,color:done.includes(PATHS.flatMap(p=>p.items).find(i=>i.name===topic?.name)?.id||"")?C.textMid:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{done.includes(PATHS.flatMap(p=>p.items).find(i=>i.name===topic?.name)?.id||"")?"\u2713 Completed":"+25 XP \u2713"}</button></div>)}{tab==="tutor"&&msgs.length===0&&(<div><button onClick={()=>{setTab("learn");window.scrollTo(0,0);}} style={{background:"none",border:"none",fontSize:13,color:C.blue,cursor:"pointer",fontFamily:"inherit",padding:"8px 0",fontWeight:600}}>{"\u2190"} Back</button></div>)}<div ref={chatRef} style={{background:"#fff",border:"1px solid "+C.border,borderRadius:16,minHeight:300,maxHeight:"calc(100vh - 320px)",overflowY:"auto",padding:18,marginBottom:12}}>{msgs.length===0&&tab==="tutor"&&(<div style={{textAlign:"center",padding:"48px 20px"}}><div style={{fontSize:36,marginBottom:8}}>{"\u{1F4AC}"}</div><p style={{fontSize:16,fontWeight:600,color:C.navy,margin:"0 0 4px"}}>AI Tutor</p><p style={{fontSize:14,color:C.textLight,margin:0}}>Ask about any AI tool. No question is too basic.</p></div>)}{msgs.map((m,i)=>(<div key={i}><div style={{marginBottom:m.quiz?0:14,display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}><div style={{maxWidth:"90%",padding:"14px 18px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"4px 16px 16px 16px",background:m.role==="user"?C.navy:"#f8fafc",color:m.role==="user"?"#fff":C.navy,fontSize:14.5,lineHeight:1.75,whiteSpace:"pre-wrap"}}>{m.content}</div></div>{m.quiz&&<QuizCard quiz={m.quiz} msgIdx={i}/>}</div>))}{loading&&(<div style={{display:"flex"}}><div style={{padding:"14px 18px",borderRadius:"4px 16px 16px 16px",background:"#f8fafc",fontSize:14,color:C.textLight}}>Preparing your lesson...</div></div>)}</div><div style={{display:"flex",gap:8}}><textarea style={{flex:1,padding:"12px 16px",borderRadius:12,border:"1.5px solid "+C.border,background:"#fff",fontSize:14,fontFamily:"inherit",color:C.navy,resize:"none",lineHeight:1.5,boxSizing:"border-box"}} rows={2} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat();}}} placeholder={tab==="lesson"?"Ask a question about this lesson...":"Ask anything about AI tools..."}/><button onClick={()=>sendChat()} disabled={loading} style={{padding:"0 18px",borderRadius:12,border:"none",background:C.blue,color:"#fff",fontSize:18,fontWeight:700,cursor:"pointer",opacity:loading?.5:1}}>{"\u2191"}</button></div><div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>{(tab==="lesson"?["Explain simpler","Give me an example","What is this used for?","Next topic"]:["What is ChatGPT?","How to build an agent","Best free AI tools","Automate my emails"]).map(q=>(<button key={q} onClick={()=>sendChat(q)} style={{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+C.border,background:"#fff",fontSize:12,fontWeight:500,color:C.textMid,cursor:"pointer",fontFamily:"inherit"}}>{q}</button>))}</div></div>)}
 
-        {err && (
-          <div style={{ marginBottom:16, padding:"12px 14px", background:"#fef2f2",
-            border:"1px solid #fecaca", borderRadius:10, color:"#dc2626", fontSize:13 }}>
-            {err}
-          </div>
-        )}
+  {tab==="forums"&&(<div style={{paddingTop:20}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><h2 style={{fontSize:18,fontWeight:700,color:C.navy,margin:0}}>Forum Buzz</h2><button onClick={fetchForumBuzz} disabled={forumLoading} style={{padding:"8px 16px",borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{forumLoading?"Scanning...":"What's Trending?"}</button></div><p style={{fontSize:14,color:C.textMid,margin:"0 0 16px",lineHeight:1.5}}>See what people are discussing across the top AI communities.</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(165px,1fr))",gap:8,marginBottom:20}}>{FORUMS.map((f,i)=>(<a key={i} href={f.url} target="_blank" rel="noopener noreferrer" style={{background:"#fff",border:"1.5px solid "+C.border,borderRadius:10,padding:"12px 14px",textDecoration:"none",color:C.navy,display:"block"}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><span style={{fontSize:14}}>{f.icon}</span><span style={{fontSize:13,fontWeight:600}}>{f.name}</span></div><div style={{fontSize:11,color:C.textLight}}>{f.m} members</div></a>))}</div>{forumLoading&&<div style={{textAlign:"center",padding:32}}><p style={{color:C.textLight,fontSize:14}}>Scanning communities...</p></div>}{forumBuzz&&!forumLoading&&(<div style={{background:"#fff",border:"1.5px solid "+C.border,borderRadius:14,padding:20,fontSize:14.5,lineHeight:1.75,color:C.textMid,whiteSpace:"pre-wrap"}}>{forumBuzz.content}<button onClick={()=>{setTab("tutor");setMsgs([]);hRef.current=[];setTopic(null);window.scrollTo(0,0);setTimeout(()=>sendChat("Teach me about the most interesting thing trending on AI forums right now."),100);}} style={{width:"100%",marginTop:14,padding:"11px",borderRadius:10,border:"none",background:C.blue,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Teach me what is trending</button></div>)}</div>)}
 
-        <button onClick={handle} disabled={loading}
-          style={{ width:"100%", padding:"15px", borderRadius:13, border:"none",
-            cursor:loading?"not-allowed":"pointer",
-            background:loading?"#cbd5e1":`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-            color:C.white, fontWeight:800, fontSize:16,
-            boxShadow:loading?"none":"0 4px 20px rgba(59,130,246,0.4)", transition:"all .2s" }}>
-          {loading ? "One moment…" : mode==="login" ? "Log In →" : "Create Account →"}
-        </button>
+  {tab==="plans"&&(<div style={{paddingTop:20}}><h2 style={{fontSize:22,fontWeight:800,color:C.navy,margin:"0 0 4px",textAlign:"center"}}>Plans</h2><p style={{fontSize:14,color:C.textMid,margin:"0 0 20px",textAlign:"center"}}>7-day free trial on all paid plans. Cancel anytime.</p>{[{id:"free",n:"Free",p:"\u00A30",pr:"",pop:false,ac:C.textLight,f:["5 AI tutor messages per day","Browse all learning paths","Streak and XP tracking","Forum access"]},{id:"plus",n:"Plus",p:"\u00A32.99",pr:"/month",pop:true,ac:C.blue,f:["Unlimited AI tutor","All quizzes and exercises","Video tutorials","Weekly AI news digest","Completion certificates"]},{id:"pro",n:"Pro",p:"\u00A35.99",pr:"/month",pop:false,ac:C.navy,f:["Everything in Plus","New tools on release day","Build and deploy agents","LinkedIn certificates","Family sharing for 2"]},{id:"teams",n:"Teams",p:"\u00A39.99",pr:"/seat",pop:false,ac:"#6366f1",f:["Everything in Pro","Admin dashboard","Team analytics","Custom learning paths","SSO and invoice billing"]}].map(p=>(<div key={p.id} style={{border:p.pop?"2px solid "+p.ac:"1.5px solid "+C.border,borderRadius:16,padding:20,marginBottom:12,position:"relative",background:"#fff"}}>{p.pop&&<div style={{position:"absolute",top:-11,left:"50%",transform:"translateX(-50%)",background:C.blue,color:"#fff",fontSize:11,fontWeight:700,padding:"3px 16px",borderRadius:20}}>MOST POPULAR</div>}<div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}><h3 style={{fontSize:18,fontWeight:700,color:C.navy,margin:0}}>{p.n}</h3><div><span style={{fontSize:28,fontWeight:800,color:C.navy}}>{p.p}</span><span style={{fontSize:14,color:C.textLight}}>{p.pr}</span></div></div><div style={{marginTop:12}}>{p.f.map((f,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"5px 0",fontSize:14,color:C.textMid}}><span style={{color:p.ac,fontSize:15}}>{"\u2713"}</span>{f}</div>)}</div><button onClick={()=>setPlan(p.id)} style={{width:"100%",marginTop:14,padding:"12px",borderRadius:12,border:plan===p.id?"2px solid "+p.ac:"none",background:plan===p.id?"#fff":p.pop?"linear-gradient(135deg,"+C.blue+","+C.navy+")":"#f1f5f9",color:plan===p.id?p.ac:p.pop?"#fff":C.textMid,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{plan===p.id?"Current Plan":"Start Free Trial"}</button></div>))}</div>)}
 
-        <p style={{ textAlign:"center", margin:"20px 0 0", fontSize:13, color:C.textMute }}>
-          {mode==="login"
-            ? <><span>No account? </span><span onClick={()=>setMode("signup")} style={{ color:C.blue, fontWeight:700, cursor:"pointer" }}>Sign up free</span></>
-            : "By signing up you agree to our Terms and Privacy Policy."
-          }
-        </p>
+  {tab==="profile"&&(<div style={{paddingTop:24}}><div style={{textAlign:"center",marginBottom:20}}><div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,"+C.blue+","+C.navy+")",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:22,color:"#fff",fontWeight:700}}>{userAvatar}</div><h2 style={{fontSize:18,fontWeight:800,color:C.navy,margin:"0 0 2px"}}>{userName}</h2><p style={{fontSize:13,color:C.textLight,margin:0}}>{user?.email}</p></div><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:24}}>{[{v:done.length,l:"Learned",i:"\u{1F4DA}"},{v:streak.c,l:"Streak",i:"\u{1F525}"},{v:xp,l:"XP",i:"\u26A1"}].map((s,i)=>(<div key={i} style={{background:"#fff",border:"1px solid "+C.border,borderRadius:14,padding:16,textAlign:"center"}}><div style={{fontSize:20}}>{s.i}</div><div style={{fontSize:22,fontWeight:800,color:C.navy,margin:"4px 0"}}>{s.v}</div><div style={{fontSize:11,color:C.textLight,fontWeight:600,textTransform:"uppercase"}}>{s.l}</div></div>))}</div><h3 style={{fontSize:15,fontWeight:700,color:C.navy,margin:"0 0 12px"}}>Progress by Path</h3>{PATHS.map(p=>{const pct=Math.round((p.items.filter(i=>done.includes(i.id)).length/p.items.length)*100);return(<div key={p.id} style={{background:"#fff",border:"1px solid "+C.border,borderRadius:10,padding:"12px 16px",marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:600,color:C.navy,marginBottom:6}}><span>{p.icon} {p.title}</span><span style={{color:p.color}}>{pct}%</span></div><div style={{height:6,borderRadius:3,background:"#f1f5f9",overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:p.color,borderRadius:3,transition:"width .5s"}}/></div></div>);})}<button onClick={doSignOut} style={{width:"100%",marginTop:20,padding:"12px",borderRadius:12,border:"1.5px solid "+C.border,background:"#fff",color:C.textMid,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Log Out</button></div>)}
 
-        <div style={{ display:"flex", alignItems:"center", gap:12, margin:"22px 0" }}>
-          <div style={{ flex:1, height:1, background:C.border }}/>
-          <span style={{ fontSize:12, color:C.textMute, fontWeight:500 }}>or continue with</span>
-          <div style={{ flex:1, height:1, background:C.border }}/>
-        </div>
-
-        <button
-          onClick={()=>{ window.location.href = "https://pwkfsjhursmfftkppuwa.supabase.co/auth/v1/authorize?provider=google"; }}
-          style={{ width:"100%", padding:"14px", borderRadius:13, border:`1.5px solid ${C.border}`,
-            background:C.white, cursor:"pointer", display:"flex", alignItems:"center",
-            justifyContent:"center", gap:10, fontSize:15, fontWeight:600, color:C.text,
-            boxShadow:"0 1px 4px rgba(0,0,0,0.06)", transition:"all .2s" }}
-          onMouseEnter={e=>(e.currentTarget.style.borderColor=C.blue)}
-          onMouseLeave={e=>(e.currentTarget.style.borderColor=C.border)}>
-          <svg width="20" height="20" viewBox="0 0 48 48">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-          </svg>
-          Continue with Google
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── HOME TAB ──────────────────────────────────────────────────────────────────
-
-function HomeTab({ user, streak, onPickPath }: { user:any; streak:any; onPickPath:(p:any)=>void }) {
-  const q = QUOTES[new Date().getDay() % QUOTES.length];
-  return (
-    <div style={{ paddingBottom:32 }}>
-      <div style={{ background:`linear-gradient(135deg,${C.navy},${C.navyMid})`,
-        padding:"32px 20px 36px", position:"relative", overflow:"hidden" }}>
-        <div style={{ position:"absolute", top:-60, right:-40, width:180, height:180,
-          borderRadius:"50%", background:"rgba(59,130,246,0.12)" }}/>
-        <div style={{ position:"relative" }}>
-          <p style={{ color:"#64748b", fontSize:13, margin:"0 0 4px" }}>Welcome back,</p>
-          <h1 style={{ color:C.white, fontSize:26, fontWeight:800, margin:"0 0 22px", letterSpacing:"-0.5px" }}>
-            {user.name} 👋
-          </h1>
-          <div style={{ display:"flex", gap:12 }}>
-            {[
-              { val:`${streak.count} 🔥`, label:"Day Streak" },
-              { val:`${streak.xp} XP`,   label:"Earned"     },
-            ].map(s=>(
-              <div key={s.label} style={{ background:"rgba(59,130,246,0.15)", borderRadius:14,
-                padding:"12px 16px", border:"1px solid rgba(59,130,246,0.25)" }}>
-                <div style={{ color:C.white, fontWeight:800, fontSize:18 }}>{s.val}</div>
-                <div style={{ color:"#64748b", fontSize:11, marginTop:3 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div style={{ padding:"24px 20px 0" }}>
-        <div style={{ background:C.blueLight, borderRadius:16, padding:"18px 20px",
-          borderLeft:`3px solid ${C.blue}`, marginBottom:28 }}>
-          <p style={{ color:C.navyMid, fontSize:14, fontStyle:"italic", margin:"0 0 6px", lineHeight:1.6 }}>"{q.t}"</p>
-          <p style={{ color:C.blue, fontSize:12, fontWeight:700, margin:0 }}>— {q.by}</p>
-        </div>
-        <p style={{ fontSize:11, fontWeight:700, color:C.textMute, letterSpacing:"1px", textTransform:"uppercase", margin:"0 0 14px" }}>
-          Learning Paths
-        </p>
-        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          {PATHS.map(p=>(
-            <button key={p.id} onClick={()=>onPickPath(p)}
-              style={{ display:"flex", alignItems:"center", gap:16, background:C.white,
-                borderRadius:18, padding:"18px 20px", border:`1.5px solid ${C.border}`,
-                cursor:"pointer", textAlign:"left", width:"100%",
-                boxShadow:"0 1px 4px rgba(0,0,0,0.04)", transition:"all .15s" }}
-              onMouseEnter={e=>(e.currentTarget.style.borderColor=C.blue)}
-              onMouseLeave={e=>(e.currentTarget.style.borderColor=C.border)}>
-              <span style={{ fontSize:26 }}>{p.icon}</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:700, fontSize:15, color:C.text }}>{p.label}</div>
-                <div style={{ fontSize:12, color:C.textMute, marginTop:2 }}>{p.topics.length} topics</div>
-              </div>
-              <span style={{ color:C.border, fontSize:20 }}>›</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── PATH SCREEN ───────────────────────────────────────────────────────────────
-
-function PathScreen({ path, onBack, onPickTopic }:
-  { path:any; onBack:()=>void; onPickTopic:(t:any,p:any)=>void }) {
-  return (
-    <div>
-      <div style={{ background:`linear-gradient(135deg,${C.navy},${C.navyMid})`, padding:"20px 20px 28px" }}>
-        <button onClick={onBack}
-          style={{ background:"rgba(255,255,255,0.08)", border:"none", color:"#94a3b8",
-            borderRadius:8, padding:"7px 14px", cursor:"pointer", fontSize:13, marginBottom:18 }}>
-          ← Back
-        </button>
-        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          <span style={{ fontSize:32 }}>{path.icon}</span>
-          <div>
-            <h2 style={{ color:C.white, fontWeight:800, fontSize:22, margin:0 }}>{path.label}</h2>
-            <p style={{ color:"#64748b", fontSize:13, margin:"3px 0 0" }}>{path.topics.length} topics</p>
-          </div>
-        </div>
-      </div>
-      <div style={{ padding:"20px" }}>
-        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          {path.topics.map((t:any, i:number)=>(
-            <button key={t.id} onClick={()=>onPickTopic(t,path)}
-              style={{ display:"flex", alignItems:"center", gap:16, background:C.white,
-                borderRadius:16, padding:"18px 20px", border:`1.5px solid ${C.border}`,
-                cursor:"pointer", textAlign:"left", width:"100%",
-                boxShadow:"0 1px 4px rgba(0,0,0,0.04)", transition:"all .15s" }}
-              onMouseEnter={e=>(e.currentTarget.style.borderColor=C.blue)}
-              onMouseLeave={e=>(e.currentTarget.style.borderColor=C.border)}>
-              <span style={{ width:32, height:32, borderRadius:10, background:C.blueLight,
-                display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:13, fontWeight:700, color:C.blue, flexShrink:0 }}>{i+1}</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:600, fontSize:15, color:C.text }}>{t.name}</div>
-                <div style={{ fontSize:12, color:C.textMute, marginTop:2 }}>{t.sub}</div>
-              </div>
-              <span style={{ color:C.border, fontSize:18 }}>›</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── TUTOR TAB ─────────────────────────────────────────────────────────────────
-
-let msgCounter = 0;
-
-function TutorTab({ initTopic, onXP, onClearTopic }:
-  { initTopic:any; onXP:(n:number)=>void; onClearTopic:()=>void }) {
-  const [msgs, setMsgs]       = useState<any[]>([]);
-  const [input, setInput]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [started, setStarted] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const msgsRef   = useRef<any[]>([]);
-
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs,loading]);
-  useEffect(()=>{
-    if (initTopic && !started) { setStarted(true); runAI(`Teach me about: ${initTopic.name}`, []); }
-  },[initTopic]);
-
-  const runAI = useCallback(async (text:string, history:any[]) => {
-    const userMsg = { id:++msgCounter, role:"user", content:text };
-    const next = [...history, userMsg];
-    msgsRef.current = next; setMsgs([...next]); setInput(""); setLoading(true);
-    try {
-      const reply = await callClaude(next.map(m=>({ role:m.role==="assistant"?"assistant":"user", content:m.content })));
-      const aiMsg = { id:++msgCounter, role:"assistant", content:reply, answered:false, answeredRight:false };
-      msgsRef.current = [...next, aiMsg]; setMsgs([...msgsRef.current]); onXP(5);
-    } catch {
-      msgsRef.current = [...next, { id:++msgCounter, role:"assistant", content:"Something went wrong — please try again!", answered:false }];
-      setMsgs([...msgsRef.current]);
-    }
-    setLoading(false);
-  },[onXP]);
-
-  const send = () => { if (!input.trim()||loading) return; runAI(input, msgsRef.current); };
-
-  const handleAnswer = useCallback(async (msgId:number, letter:string, isRight:boolean, quiz:any) => {
-    const updated = msgsRef.current.map(m=>m.id===msgId?{...m,answered:true,answeredRight:isRight}:m);
-    msgsRef.current = updated; setMsgs([...updated]); onXP(isRight?20:5);
-    await new Promise(r=>setTimeout(r,700));
-    runAI(`My answer is ${letter}: ${quiz.options[letter]}`, updated);
-  },[onXP,runAI]);
-
-  const starters = [
-    { label:"Explain ChatGPT to me",  text:"Teach me about ChatGPT — I have never used it before" },
-    { label:"Write better AI prompts", text:"Teach me how to write better prompts for AI" },
-    { label:"Automate tasks at work",  text:"How can I use AI to automate my work tasks?" },
-    { label:"What is an AI Agent?",    text:"Explain AI Agents in a way I will never forget" },
-  ];
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 108px)" }}>
-      <div style={{ padding:"14px 20px", background:C.white, borderBottom:`1px solid ${C.border}`,
-        display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:10,
-            background:`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-            display:"flex", alignItems:"center", justifyContent:"center" }}><LogoMark size={22}/></div>
-          <div>
-            <p style={{ margin:0, fontWeight:700, fontSize:15, color:C.text }}>AI Tutor</p>
-            <p style={{ margin:0, fontSize:11, color:C.green, fontWeight:600 }}>● Online</p>
-          </div>
-        </div>
-        {msgs.length>0 && (
-          <button onClick={()=>{ setMsgs([]); msgsRef.current=[]; setStarted(false); onClearTopic(); }}
-            style={{ background:C.bg, border:`1px solid ${C.border}`, color:C.textMid,
-              borderRadius:8, padding:"7px 14px", cursor:"pointer", fontSize:13, fontWeight:600 }}>
-            New chat
-          </button>
-        )}
-      </div>
-
-      <div style={{ flex:1, overflowY:"auto", padding:"24px 20px", background:C.bg, display:"flex", flexDirection:"column" }}>
-        {msgs.length===0 ? (
-          <div>
-            <div style={{ textAlign:"center", padding:"32px 0 28px" }}>
-              <div style={{ fontSize:52, marginBottom:14 }}>🤖</div>
-              <p style={{ color:C.text, fontSize:18, fontWeight:800, margin:"0 0 6px" }}>What do you want to learn?</p>
-              <p style={{ color:C.textMute, fontSize:14, margin:0 }}>Tap a topic or type anything below</p>
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              {starters.map(s=>(
-                <button key={s.label} onClick={()=>runAI(s.text,[])}
-                  style={{ background:C.white, border:`1.5px solid ${C.border}`, borderRadius:14,
-                    padding:"16px 18px", cursor:"pointer", textAlign:"left",
-                    fontSize:15, color:C.text, fontWeight:500,
-                    boxShadow:"0 1px 4px rgba(0,0,0,0.04)", transition:"all .15s" }}
-                  onMouseEnter={e=>{ e.currentTarget.style.borderColor=C.blue; e.currentTarget.style.background=C.blueLight; }}
-                  onMouseLeave={e=>{ e.currentTarget.style.borderColor=C.border; e.currentTarget.style.background=C.white; }}>
-                  {s.label} →
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : msgs.map(m=><ChatMessage key={m.id} msg={m} onAnswer={handleAnswer}/>)}
-
-        {loading && (
-          <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
-            <div style={{ width:34, height:34, borderRadius:10,
-              background:`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-              display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><LogoMark size={20}/></div>
-            <div style={{ background:C.white, borderRadius:"5px 18px 18px 18px",
-              padding:"13px 18px", boxShadow:"0 1px 8px rgba(0,0,0,0.06)",
-              display:"flex", gap:5, alignItems:"center" }}>
-              {[0,1,2].map(i=>(
-                <span key={i} style={{ width:7, height:7, borderRadius:"50%", background:C.blue,
-                  display:"inline-block", animation:`bounce .8s ${i*.16}s infinite ease-in-out` }}/>
-              ))}
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef}/>
-      </div>
-
-      <div style={{ background:C.white, borderTop:`1px solid ${C.border}`, padding:"12px 16px", flexShrink:0, display:"flex", gap:10 }}>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()}
-          placeholder="Ask anything about AI…"
-          style={{ flex:1, padding:"13px 16px", borderRadius:13, border:`1.5px solid ${C.border}`,
-            fontSize:15, color:C.text, background:C.bg, outline:"none", fontFamily:"inherit", transition:"border-color .2s" }}
-          onFocus={e=>(e.target.style.borderColor=C.blue)}
-          onBlur={e=>(e.target.style.borderColor=C.border)}/>
-        <button onClick={send} disabled={loading||!input.trim()}
-          style={{ width:48, height:48, borderRadius:13, flexShrink:0, border:"none", fontSize:20, color:C.white,
-            background:input.trim()&&!loading?`linear-gradient(135deg,${C.blue},${C.blueDark})`:"#e2e8f0",
-            cursor:input.trim()&&!loading?"pointer":"not-allowed" }}>↑</button>
-      </div>
-      <style>{`@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-7px)}}`}</style>
-    </div>
-  );
-}
-
-// ── PLANS TAB ─────────────────────────────────────────────────────────────────
-
-function PlansTab() {
-  const [billing, setBilling] = useState("monthly");
-  const plans = [
-    { name:"Free",    price:{monthly:0, yearly:0},  badge:"Always free",  accent:"#94a3b8", disabled:true,
-      features:["5 learning paths","5 AI Tutor messages/day","Streak & XP tracking"], cta:"Current Plan" },
-    { name:"Starter", price:{monthly:3, yearly:25}, badge:"Most popular", accent:C.blue, highlight:true,
-      features:["Unlimited AI Tutor","All topics unlocked","Interactive quizzes","Certificates","7-day free trial"], cta:"Start Free Trial" },
-    { name:"Pro",     price:{monthly:5, yearly:40}, badge:"Best value",   accent:"#7c3aed",
-      features:["Everything in Starter","New lessons first","Personalised path","Family sharing (2 accounts)","Build your own agent"], cta:"Go Pro" },
-  ];
-
-  return (
-    <div style={{ paddingBottom:32 }}>
-      <div style={{ background:`linear-gradient(135deg,${C.navy},${C.navyMid})`, padding:"32px 20px 36px", textAlign:"center" }}>
-        <h2 style={{ color:C.white, fontWeight:800, fontSize:24, margin:"0 0 6px" }}>Plans</h2>
-        <p style={{ color:"#64748b", fontSize:14, margin:"0 0 22px" }}>Start free. Upgrade anytime.</p>
-        <div style={{ display:"inline-flex", background:"rgba(255,255,255,0.07)", borderRadius:12, padding:4, gap:4 }}>
-          {["monthly","yearly"].map(b=>(
-            <button key={b} onClick={()=>setBilling(b)}
-              style={{ padding:"8px 18px", borderRadius:9, border:"none", cursor:"pointer",
-                fontWeight:700, fontSize:13, transition:"all .2s",
-                background:billing===b?C.blue:"transparent", color:billing===b?C.white:"#64748b" }}>
-              {b==="monthly"?"Monthly":"Yearly — Save 30%"}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div style={{ padding:"20px" }}>
-        {plans.map((p:any)=>(
-          <div key={p.name} style={{ marginBottom:12, background:C.white, borderRadius:20, padding:"22px 20px",
-            border:`1.5px solid ${p.highlight?C.bluePale:C.border}`,
-            boxShadow:p.highlight?"0 4px 24px rgba(59,130,246,0.12)":"0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
-              <div>
-                <p style={{ margin:0, fontWeight:800, fontSize:18, color:C.text }}>{p.name}</p>
-                <p style={{ margin:"3px 0 0", fontSize:12, color:p.accent, fontWeight:600 }}>{p.badge}</p>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <p style={{ margin:0, fontWeight:900, fontSize:28, color:C.text, lineHeight:1 }}>
-                  {p.price[billing]===0?"Free":`£${p.price[billing]}`}
-                </p>
-                {p.price[billing]>0&&<p style={{ margin:"3px 0 0", fontSize:12, color:C.textMute }}>/{billing==="monthly"?"mo":"yr"}</p>}
-              </div>
-            </div>
-            <div style={{ display:"flex", flexDirection:"column", gap:9, marginBottom:18 }}>
-              {p.features.map((f:string)=>(
-                <p key={f} style={{ margin:0, fontSize:14, color:C.textMid, display:"flex", alignItems:"center", gap:8 }}>
-                  <span style={{ color:p.accent, fontWeight:800 }}>✓</span>{f}
-                </p>
-              ))}
-            </div>
-            <button disabled={p.disabled}
-              style={{ width:"100%", padding:"14px", borderRadius:12, border:"none", fontWeight:700, fontSize:15,
-                background:p.disabled?C.bg:p.highlight?`linear-gradient(135deg,${C.blue},${C.blueDark})`:C.navy,
-                color:p.disabled?C.textMute:C.white, cursor:p.disabled?"default":"pointer",
-                boxShadow:p.highlight&&!p.disabled?"0 4px 16px rgba(59,130,246,0.35)":"none" }}>
-              {p.cta}
-            </button>
-          </div>
-        ))}
-        <p style={{ textAlign:"center", color:C.textMute, fontSize:12, marginTop:4 }}>
-          Cancel anytime · No hidden fees · Stripe payments
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ── PROFILE TAB ───────────────────────────────────────────────────────────────
-
-function ProfileTab({ user, streak, onLogout }: { user:any; streak:any; onLogout:()=>void }) {
-  return (
-    <div style={{ paddingBottom:40 }}>
-      <div style={{ background:`linear-gradient(135deg,${C.navy},${C.navyMid})`, padding:"32px 20px 36px", textAlign:"center" }}>
-        <div style={{ width:70, height:70, borderRadius:"50%",
-          background:`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-          display:"flex", alignItems:"center", justifyContent:"center",
-          margin:"0 auto 14px", color:C.white, fontWeight:900, fontSize:30,
-          boxShadow:"0 8px 24px rgba(59,130,246,0.4)" }}>
-          {user.name[0].toUpperCase()}
-        </div>
-        <p style={{ margin:0, fontWeight:800, fontSize:20, color:C.white }}>{user.name}</p>
-        <p style={{ margin:"4px 0 0", fontSize:13, color:"#64748b" }}>{user.email}</p>
-        <div style={{ display:"flex", justifyContent:"center", gap:28, marginTop:20 }}>
-          {[
-            { val:`${streak.count} 🔥`, label:"Day Streak" },
-            { val:streak.xp,            label:"Total XP"   },
-            { val:streak.best,          label:"Best Streak" },
-          ].map(s=>(
-            <div key={s.label} style={{ textAlign:"center" }}>
-              <p style={{ margin:0, fontWeight:900, fontSize:22, color:C.white }}>{s.val}</p>
-              <p style={{ margin:"3px 0 0", fontSize:11, color:"#64748b" }}>{s.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={{ padding:"20px" }}>
-        {[
-          { icon:"🔔", label:"Notifications"   },
-          { icon:"🔒", label:"Change Password"  },
-          { icon:"📋", label:"My Certificates"  },
-          { icon:"❓", label:"Help and Support"  },
-          { icon:"⭐", label:"Rate the App"      },
-        ].map(item=>(
-          <button key={item.label}
-            style={{ display:"flex", alignItems:"center", gap:14, background:"transparent",
-              borderRadius:12, padding:"16px 4px", border:"none", borderBottom:`1px solid ${C.border}`,
-              cursor:"pointer", textAlign:"left", width:"100%" }}>
-            <span style={{ fontSize:18, width:28 }}>{item.icon}</span>
-            <span style={{ flex:1, fontWeight:500, fontSize:15, color:C.text }}>{item.label}</span>
-            <span style={{ color:C.border, fontSize:18 }}>›</span>
-          </button>
-        ))}
-        <button onClick={onLogout}
-          style={{ marginTop:20, width:"100%", background:"#fff0f0", borderRadius:14, padding:"15px",
-            border:"1.5px solid #fee2e2", cursor:"pointer", color:"#ef4444", fontWeight:700, fontSize:15 }}>
-          Log Out
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── ROOT PAGE ──────────────────────────────────────────────────────────────────
-
-export default function Page() {
-  const [user, setUser]               = useState<any>(null);
-  const [tab, setTab]                 = useState("home");
-  const [activePath, setActivePath]   = useState<any>(null);
-  const [activeTopic, setActiveTopic] = useState<any>(null);
-  const [streak, setStreak]           = useState({ count:3, xp:120, best:7 });
-
-  // Handles redirect back from Google OAuth
-  useGoogleAuthRedirect(setUser);
-
-  const addXP = useCallback((n:number) => setStreak(s=>({...s, xp:s.xp+n})), []);
-
-  if (!user) return <AuthScreen onAuth={setUser}/>;
-
-  const NAV = [
-    { id:"home",    icon:"🏠", label:"Home"     },
-    { id:"tutor",   icon:"🤖", label:"AI Tutor" },
-    { id:"plans",   icon:"⭐", label:"Plans"    },
-    { id:"profile", icon:"👤", label:"Profile"  },
-  ];
-
-  return (
-    <div style={{ fontFamily:"'Segoe UI',system-ui,sans-serif", maxWidth:430, margin:"0 auto", background:C.bg, minHeight:"100vh" }}>
-
-      {/* Top bar */}
-      <div style={{ position:"sticky", top:0, zIndex:50, background:C.navy, height:52,
-        display:"flex", alignItems:"center", justifyContent:"space-between",
-        padding:"0 20px", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }} onClick={()=>setTab("home")}>
-          <div style={{ width:30, height:30, borderRadius:9,
-            background:`linear-gradient(135deg,${C.blue},${C.blueDark})`,
-            display:"flex", alignItems:"center", justifyContent:"center" }}><LogoMark size={18}/></div>
-          <span style={{ color:C.white, fontWeight:800, fontSize:17 }}>
-            fluent<span style={{ color:C.blue }}>AI</span>
-          </span>
-        </div>
-        <span style={{ fontSize:13, color:"#64748b", fontWeight:600 }}>
-          🔥 {streak.count} &nbsp;·&nbsp; {streak.xp} XP
-        </span>
-      </div>
-
-      {/* Content */}
-      <div style={{ minHeight:"calc(100vh - 110px)", overflowY:"auto" }}>
-        {tab==="home"    && <HomeTab user={user} streak={streak} onPickPath={p=>{setActivePath(p);setTab("path");}}/>}
-        {tab==="path"    && activePath && <PathScreen path={activePath} onBack={()=>setTab("home")} onPickTopic={(t,p)=>{setActivePath(p);setActiveTopic(t);setTab("tutor");}}/>}
-        {tab==="tutor"   && <TutorTab initTopic={activeTopic} onXP={addXP} onClearTopic={()=>setActiveTopic(null)}/>}
-        {tab==="plans"   && <PlansTab/>}
-        {tab==="profile" && <ProfileTab user={user} streak={streak} onLogout={()=>setUser(null)}/>}
-      </div>
-
-      {/* Bottom nav */}
-      <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)",
-        width:"100%", maxWidth:430, background:C.white, borderTop:`1px solid ${C.border}`,
-        display:"flex", zIndex:50, paddingBottom:"env(safe-area-inset-bottom)" }}>
-        {NAV.map(n=>{
-          const active = tab===n.id||(n.id==="home"&&tab==="path");
-          return (
-            <button key={n.id} onClick={()=>{ setTab(n.id); if(n.id==="tutor") setActiveTopic(null); }}
-              style={{ flex:1, padding:"11px 0 9px", border:"none", background:"transparent",
-                cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-              <span style={{ fontSize:20, opacity:active?1:0.35 }}>{n.icon}</span>
-              <span style={{ fontSize:10, fontWeight:active?700:400, color:active?C.blue:C.textMute }}>{n.label}</span>
-              {active && <div style={{ width:20, height:2, borderRadius:2, background:C.blue }}/>}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
+  </main><nav style={{position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid "+C.border,padding:"4px 0 env(safe-area-inset-bottom,6px)",zIndex:100}}><div style={{maxWidth:680,margin:"0 auto",display:"flex",justifyContent:"space-around"}}>{[{id:"learn",i:"\u{1F4DA}",l:"Learn"},{id:"tutor",i:"\u{1F4AC}",l:"Tutor"},{id:"forums",i:"\u{1F310}",l:"Forums"},{id:"plans",i:"\u{1F451}",l:"Plans"},{id:"profile",i:"\u{1F464}",l:"Me"}].map(n=>(<button key={n.id} onClick={()=>{setTab(n.id);window.scrollTo(0,0);if(n.id==="tutor"){setTopic(null);setMsgs([]);hRef.current=[];}if(n.id==="forums"&&!forumBuzz)fetchForumBuzz();}} style={{background:"none",border:"none",cursor:"pointer",padding:"4px 10px",textAlign:"center",fontFamily:"inherit"}}><div style={{fontSize:18}}>{n.i}</div><div style={{fontSize:10,fontWeight:600,color:tab===n.id?C.blue:C.textLight,marginTop:2}}>{n.l}</div></button>))}</div></nav></div>);
 }
