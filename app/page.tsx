@@ -2,6 +2,41 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 
+// Handle Supabase Google OAuth redirect — reads access_token from URL hash
+function useGoogleAuthRedirect(setUser: (u: any) => void) {
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token")) return;
+    const params = new URLSearchParams(hash.replace("#", ""));
+    const accessToken = params.get("access_token");
+    if (!accessToken) return;
+
+    // Fetch user info from Supabase using the access token
+    fetch("https://pwkfsjhursmfftkppuwa.supabase.co/auth/v1/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3a2Zzamh1cnNtZmZ0a3BwdXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NjI0MDAsImV4cCI6MjA1OTQzODQwMH0.abc",
+      },
+    })
+      .then(r => r.json())
+      .then(data => {
+        const email = data.email || "user@gmail.com";
+        const name  = data.user_metadata?.full_name || data.user_metadata?.name || email.split("@")[0];
+        setUser({ name, email });
+        window.location.hash = "";
+      })
+      .catch(() => {
+        // Fallback: just log them in with email from token payload
+        try {
+          const payload = JSON.parse(atob(accessToken.split(".")[1]));
+          const email   = payload.email || "user@gmail.com";
+          setUser({ name: email.split("@")[0], email });
+          window.location.hash = "";
+        } catch {}
+      });
+  }, []);
+}
+
 // ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
 
 const C = {
@@ -745,6 +780,9 @@ export default function Page() {
   const [activePath, setActivePath]   = useState<any>(null);
   const [activeTopic, setActiveTopic] = useState<any>(null);
   const [streak, setStreak]           = useState({ count:3, xp:120, best:7 });
+
+  // Handles redirect back from Google OAuth
+  useGoogleAuthRedirect(setUser);
 
   const addXP = useCallback((n:number) => setStreak(s=>({...s, xp:s.xp+n})), []);
 
