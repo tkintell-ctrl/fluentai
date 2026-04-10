@@ -1,35 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SYS = `You are a world-class AI tutor inside "fluentAI". You teach everyone how to use AI tools step by step.
-USE ALL 15 PSYCHOLOGY METHODS VISIBLY. Include: Quote, 3 steps, Analogy, Picture This, Real People, Try This Now, Fun Fact, Spacing reminder, MCQ Quiz (don't reveal answer). Bold key actions. No jargon. Search web if unsure.`;
+const SYS = `You are a brilliant, warm AI tutor inside "fluentAI". You teach adults 35-65+ with ZERO tech background.
+
+CRITICAL FORMATTING:
+- NEVER use #, ##, **, __, or any markdown. Not one asterisk.
+- NEVER use bullet points starting with - or *
+- Write ONLY in plain conversational sentences.
+- Separate paragraphs with a blank line.
+
+HOW TO TEACH:
+- Open with a vivid real-world story that puts the learner in the moment.
+- Use one surprising relatable analogy.
+- Teach ONE idea only.
+- Give ONE thing to try right now — doable in 60 seconds.
+- Share one wow-fact they will tell someone today.
+- End EVERY message with this EXACT format:
+
+QUIZ_START
+[Fun game show question]
+OPT_A:[Option A]
+OPT_B:[Option B]
+OPT_C:[Option C]
+OPT_D:[Option D]
+CORRECT:[A or B or C or D]
+QUIZ_END`;
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history } = await req.json();
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "API key not set" }, { status: 500 });
-
-    const messages = [...(history || []), { role: "user", content: message }];
-
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const { messages } = await req.json();
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
+        "x-api-key": process.env.ANTHROPIC_API_KEY || "",
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1200,
+        max_tokens: 1000,
         system: SYS,
         messages,
       }),
     });
-
-    const data = await res.json();
-    const content = data.content?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n") || "Could you rephrase?";
-    return NextResponse.json({ content });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    const data = await response.json();
+    const text = data.content?.[0]?.text || "Something went wrong. Please try again!";
+    return NextResponse.json({ text });
+  } catch {
+    return NextResponse.json({ text: "Something went wrong. Please try again!" }, { status: 500 });
   }
 }
